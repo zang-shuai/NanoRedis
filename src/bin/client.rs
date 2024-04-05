@@ -45,9 +45,12 @@ enum CommandParser {
     Mget {
         datas: Vec<String>
     },
+    Incr {
+        key: String
+    },
     Incrby {
         key: String,
-        #[clap(value_parser = i64_from_str)]
+        #[clap(default_value_t = 1, value_parser = i64_from_str)]
         value: i64,
     },
 }
@@ -105,6 +108,10 @@ async fn main() -> nano_redis::Result<()> {
         }
         CommandParser::Incrby { key, value } => {
             client.incrby(&key, value).await?;
+            println!("OK");
+        }
+        CommandParser::Incr { key } => {
+            client.incrby(&key, 1).await?;
             println!("OK");
         }
     }

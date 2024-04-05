@@ -57,9 +57,7 @@ use crate::entity::ParseError;
 // 将 Bytes 转换回 i64
 pub fn bytes_to_i64(bytes: Bytes) ->  Result<i64, Box<dyn std::error::Error>> {
     let num_str = str::from_utf8(&bytes)?;
-    println!("------------{:?}",num_str);
     let num = num_str.parse::<i64>()?;
-    println!("++++++++++++{:?}",num);
     Ok(num)
 }
 
