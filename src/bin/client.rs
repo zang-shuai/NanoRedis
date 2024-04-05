@@ -39,6 +39,9 @@ enum CommandParser {
         #[clap(value_parser = duration_from_ms_str)]
         expires: Option<Duration>,
     },
+    Mset {
+        datas: Vec<String>
+    },
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -75,7 +78,11 @@ async fn main() -> nano_redis::Result<()> {
             }
         }
         CommandParser::Set { key, value, expires } => {
-            client.set(&key, value,expires).await?;
+            client.set(&key, value, expires).await?;
+            println!("OK");
+        }
+        CommandParser::Mset { datas } => {
+            client.mset(&datas).await?;
             println!("OK");
         }
     }

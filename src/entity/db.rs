@@ -82,7 +82,6 @@ impl Db {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
                 entries: HashMap::new(),
-                // pub_sub: HashMap::new(),
                 expirations: BTreeSet::new(),
                 shutdown: false,
             }),
@@ -111,10 +110,6 @@ impl Db {
         let expires_at = expire.map(|duration| {
             // 设置到期时间
             let when = Instant::now() + duration;
-
-            // Only notify the worker task if the newly inserted expiration is the
-            // **next** key to evict. In this case, the worker needs to be woken up
-            // to update its state.
             // 只有当新插入的expiration是下一个要删除的键时，才通知辅助任务。在这种情况下，需要唤醒worker以更新其状态。
             // 查看树中的第一个结点（最小结点），是否大于当前节点的存在时间
             notify = state

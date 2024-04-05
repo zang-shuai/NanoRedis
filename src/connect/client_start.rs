@@ -5,6 +5,7 @@ use bytes::Bytes;
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
 use tokio::net::{TcpStream, ToSocketAddrs};
+// use tokio::time::error::Error;
 use tracing::{debug, instrument};
 use crate::connect::{Connection};
 use crate::entity::Frame;
@@ -81,7 +82,28 @@ impl Client {
             frame => Err(frame.to_error()),
         }
     }
+    #[instrument(skip(self))]
+    pub async fn mset(&mut self, datas: &Vec<String>) -> crate::Result<()> {
+        let l = datas.len();
+        if l & 1 == 1 {
+            // Err(frame.to_error())
+        }
+        let mut i = 0;
+        while i < l {
+            self.set(datas[i].as_str(), Bytes::from(datas[i + 1].clone()), None).await?;
+            i += 2;
+        }
+        Ok(())
 
+        // let cmd = Set::new(key, value, expiration);
+        // let frame = cmd.into_frame();
+        // debug!(request = ?frame);
+        // self.connection.write_frame(&frame).await?;
+        // match self.read_response().await? {
+        //     Frame::Simple(response) if response == "OK" => Ok(()),
+        //     frame => Err(frame.to_error()),
+        // }
+    }
     /// 读取响应帧
     async fn read_response(&mut self) -> crate::Result<Frame> {
         // 获取服务端的相应
