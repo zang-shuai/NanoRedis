@@ -42,6 +42,14 @@ enum CommandParser {
     Mset {
         datas: Vec<String>
     },
+    Mget {
+        datas: Vec<String>
+    },
+    // Incrby {
+    //     key: String,
+    //     #[clap(value_parser = i32_from_str)]
+    //     value: i32,
+    // },
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -85,6 +93,20 @@ async fn main() -> nano_redis::Result<()> {
             client.mset(&datas).await?;
             println!("OK");
         }
+        CommandParser::Mget { datas } => {
+            if let Some(value) = client.mget(&datas).await? {
+                let data_str = str::from_utf8(&value).unwrap().trim_end_matches(',');
+                for (i, item) in data_str.split(',').enumerate() {
+                    println!("{:?}:\"{}\"\t", datas[i], item);
+                }
+            } else {
+                println!("(nil)");
+            }
+        }
+        // CommandParser::Incrby { key, value } => {
+        //     client.incrby(&key, value).await?;
+        //     println!("OK");
+        // }
     }
 
     Ok(())
@@ -98,3 +120,8 @@ fn duration_from_ms_str(src: &str) -> Result<Duration, ParseIntError> {
 fn bytes_from_str(src: &str) -> Result<Bytes, Infallible> {
     Ok(Bytes::from(src.to_string()))
 }
+
+// fn i32_from_str(src: &str) -> Result<i32, ParseIntError> {
+//     // Ok(Bytes::from(src.to_string()));
+//     src.parse::<i32>()
+// }

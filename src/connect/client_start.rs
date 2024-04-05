@@ -1,7 +1,7 @@
 //! mini 客户端
 
 use crate::cmd::{Get, Ping, Set};
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
 use tokio::net::{TcpStream, ToSocketAddrs};
@@ -9,6 +9,7 @@ use tokio::net::{TcpStream, ToSocketAddrs};
 use tracing::{debug, instrument};
 use crate::connect::{Connection};
 use crate::entity::Frame;
+use crate::entity::Frame::Error as FrameError;
 
 // 与Redis服务器建立连接。
 // 由单个"TcpStream"支持，"Client"提供了基本的网络客户端功能（无池化、重试等）。
@@ -70,6 +71,30 @@ impl Client {
             frame => Err(frame.to_error()),
         }
     }
+    #[instrument(skip(self))]
+    pub async fn mget(&mut self, keys: &Vec<String>) -> crate::Result<Option<Bytes>> {
+        let mut res = BytesMut::new();
+        for key in keys {
+            let frame = Get::new(key).into_frame();
+            debug!(request = ?frame);
+            self.connection.write_frame(&frame).await?;
+            match self.read_response().await? {
+                Frame::Simple(value) => {
+                    res.extend_from_slice(&Bytes::from(value));
+                    res.extend(b",");
+                }
+                Frame::Bulk(value) => {
+                    res.extend(value);
+                    res.extend(b",");
+                }
+                Frame::Null => {
+                    res.extend(b"None,");
+                }
+                frame => { return Err(frame.to_error()); }
+            };
+        }
+        Ok(Some(Bytes::from(res)))
+    }
 
     #[instrument(skip(self))]
     pub async fn set(&mut self, key: &str, value: Bytes, expiration: Option<Duration>) -> crate::Result<()> {
@@ -86,7 +111,7 @@ impl Client {
     pub async fn mset(&mut self, datas: &Vec<String>) -> crate::Result<()> {
         let l = datas.len();
         if l & 1 == 1 {
-            // Err(frame.to_error())
+            return Err(FrameError("Wrong number of parameters".to_string()).to_error());
         }
         let mut i = 0;
         while i < l {
@@ -94,15 +119,6 @@ impl Client {
             i += 2;
         }
         Ok(())
-
-        // let cmd = Set::new(key, value, expiration);
-        // let frame = cmd.into_frame();
-        // debug!(request = ?frame);
-        // self.connection.write_frame(&frame).await?;
-        // match self.read_response().await? {
-        //     Frame::Simple(response) if response == "OK" => Ok(()),
-        //     frame => Err(frame.to_error()),
-        // }
     }
     /// 读取响应帧
     async fn read_response(&mut self) -> crate::Result<Frame> {
