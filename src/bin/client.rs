@@ -45,11 +45,11 @@ enum CommandParser {
     Mget {
         datas: Vec<String>
     },
-    // Incrby {
-    //     key: String,
-    //     #[clap(value_parser = i32_from_str)]
-    //     value: i32,
-    // },
+    Incrby {
+        key: String,
+        #[clap(value_parser = i64_from_str)]
+        value: i64,
+    },
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -103,10 +103,10 @@ async fn main() -> nano_redis::Result<()> {
                 println!("(nil)");
             }
         }
-        // CommandParser::Incrby { key, value } => {
-        //     client.incrby(&key, value).await?;
-        //     println!("OK");
-        // }
+        CommandParser::Incrby { key, value } => {
+            client.incrby(&key, value).await?;
+            println!("OK");
+        }
     }
 
     Ok(())
@@ -121,7 +121,12 @@ fn bytes_from_str(src: &str) -> Result<Bytes, Infallible> {
     Ok(Bytes::from(src.to_string()))
 }
 
-// fn i32_from_str(src: &str) -> Result<i32, ParseIntError> {
-//     // Ok(Bytes::from(src.to_string()));
-//     src.parse::<i32>()
-// }
+fn i32_from_str(src: &str) -> Result<i32, ParseIntError> {
+    // Ok(Bytes::from(src.to_string()));
+    src.parse::<i32>()
+}
+
+fn i64_from_str(src: &str) -> Result<i64, ParseIntError> {
+    // Ok(Bytes::from(src.to_string()));
+    src.parse::<i64>()
+}

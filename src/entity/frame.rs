@@ -1,6 +1,7 @@
 // 提供一个表示Redis协议帧的类型以及实用程序，解析字节数组中的帧。
 
 use bytes::{Buf, Bytes};
+// use std::convert::TryInto;
 pub use core::prelude::rust_2021::*;
 use std::fmt;
 use std::io::Cursor;
@@ -12,7 +13,8 @@ use std::string::FromUtf8Error;
 pub enum Frame {
     Simple(String),
     Error(String),
-    Integer(u64),
+    USize(u64),
+    Integer(i64),
     Bulk(Bytes),
     Null,
     Array(Vec<Frame>),
@@ -45,7 +47,16 @@ impl Frame {
     }
 
     // 如果这个self帧完成初始化，则在数组中 push 一个 int
-    pub(crate) fn push_int(&mut self, value: u64) {
+    pub(crate) fn push_u64(&mut self, value: u64) {
+        match self {
+            Frame::Array(vec) => {
+                vec.push(Frame::USize(value));
+            }
+            _ => panic!("not an array frame"),
+        }
+    }
+
+    pub(crate) fn push_i64(&mut self, value: i64) {
         match self {
             Frame::Array(vec) => {
                 vec.push(Frame::Integer(value));
@@ -67,7 +78,7 @@ impl Frame {
                 get_line(src)?;
                 Ok(())
             }
-            b'-' => {
+            b'#' => {
                 get_line(src)?;
                 Ok(())
             }
@@ -75,8 +86,12 @@ impl Frame {
                 let _ = get_decimal(src)?;
                 Ok(())
             }
+            b'=' => {
+                let _ = get_i64(src)?;
+                Ok(())
+            }
             b'$' => {
-                if b'-' == peek_u8(src)? {
+                if b'#' == peek_u8(src)? {
                     // Skip '-1\r\n'
                     skip(src, 4)
                 } else {
@@ -109,7 +124,7 @@ impl Frame {
                 let string = String::from_utf8(line)?;
                 Ok(Frame::Simple(string))
             }
-            b'-' => {
+            b'#' => {
                 // 获取下一行，转为 string ，封装成Error帧返回
                 let line = get_line(src)?.to_vec();
                 let string = String::from_utf8(line)?;
@@ -119,11 +134,16 @@ impl Frame {
             b':' => {
                 // 获取下一行，转为 u64 ，封装成Integer帧返回
                 let len = get_decimal(src)?;
+                Ok(Frame::USize(len))
+            }
+            b'=' => {
+                // 获取下一行，转为 u64 ，封装成Integer帧返回
+                let len = get_i64(src)?;
                 Ok(Frame::Integer(len))
             }
             b'$' => {
                 // 如果下一个为 - 则获取下一行，如果获取到的下一行为-1 则错误，否则返回 null
-                if b'-' == peek_u8(src)? {
+                if b'#' == peek_u8(src)? {
                     let line = get_line(src)?;
                     if line != b"-1" {
                         return Err("protocol error; invalid frame format".into());
@@ -186,7 +206,7 @@ impl fmt::Display for Frame {
         match self {
             Frame::Simple(response) => response.fmt(fmt),
             Frame::Error(msg) => write!(fmt, "error: {}", msg),
-            Frame::Integer(num) => num.fmt(fmt),
+            Frame::USize(num) => num.fmt(fmt),
             Frame::Bulk(msg) => match str::from_utf8(msg) {
                 Ok(string) => string.fmt(fmt),
                 Err(_) => write!(fmt, "{:?}", msg),
@@ -204,6 +224,7 @@ impl fmt::Display for Frame {
 
                 Ok(())
             }
+            Frame::Integer(num) => num.fmt(fmt),
         }
     }
 }
@@ -239,8 +260,15 @@ fn skip(src: &mut Cursor<&[u8]>, n: usize) -> Result<(), Error> {
 fn get_decimal(src: &mut Cursor<&[u8]>) -> Result<u64, Error> {
     use atoi::atoi;
     let line = get_line(src)?;
-    // 转为 u8
+    // 转为 u64
     atoi::<u64>(line).ok_or_else(|| "protocol error; invalid frame format".into())
+}
+
+fn get_i64(src: &mut Cursor<&[u8]>) -> Result<i64, Error> {
+    use atoi::atoi;
+    let line = get_line(src)?;
+    // 转为 u64
+    atoi::<i64>(line).ok_or_else(|| "protocol error; invalid frame format".into())
 }
 
 /// 寻找相关行

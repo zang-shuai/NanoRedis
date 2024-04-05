@@ -1,10 +1,12 @@
-use tokio::sync::{ Notify};
+use tokio::sync::{Notify};
 use tokio::time::{self, Duration, Instant};
 
 use bytes::Bytes;
 use std::collections::{BTreeSet, HashMap};
+use std::io::Read;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
+use crate::utils::serialization::{bytes_to_i64, i64_to_bytes};
 
 // `Db`的包装类。为了允许有序地清理"Db"，当这个结构被丢弃时，通过信号通知后台清除任务关闭系统
 #[derive(Debug)]
@@ -147,6 +149,26 @@ impl Db {
             self.shared.background_task.notify_one();
         }
     }
+
+
+    pub(crate) fn incrby(&self, key: String, value: i64) -> Option<Bytes> {
+        let mut state = self.shared.state.lock().unwrap();
+        let option = match state.entries.get_mut(&key) {
+            None => {
+                Some(Bytes::from("error"))
+            }
+            Some(data) => {
+                let bytes1 = data.data.clone();
+                let int = bytes_to_i64(bytes1.clone()).unwrap();
+                let bytes = Bytes::from((int + value).to_string()).clone();
+                data.data = bytes.clone();
+                Some(bytes.clone())
+            }
+        };
+        drop(state);
+        return option;
+    }
+
 
     // 关闭信号
     fn shutdown_purge_task(&self) {

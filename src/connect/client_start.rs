@@ -1,6 +1,6 @@
 //! mini 客户端
 
-use crate::cmd::{Get, Ping, Set};
+use crate::cmd::{Get, Incrby, Ping, Set};
 use bytes::{Bytes, BytesMut};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
@@ -119,6 +119,17 @@ impl Client {
             i += 2;
         }
         Ok(())
+    }
+    #[instrument(skip(self))]
+    pub async fn incrby(&mut self, key: &str, value: i64) -> crate::Result<()> {
+        let cmd = Incrby::new(key, value);
+        let frame = cmd.into_frame();
+        debug!(request = ?frame);
+        self.connection.write_frame(&frame).await?;
+        match self.read_response().await? {
+            Frame::Simple(response) if response == "OK" => Ok(()),
+            frame => Err(frame.to_error()),
+        }
     }
     /// 读取响应帧
     async fn read_response(&mut self) -> crate::Result<Frame> {

@@ -3,6 +3,7 @@ pub mod cmd;
 pub use cmd::Command;
 
 pub mod entity;
+pub mod utils;
 
 pub mod connect;
 

@@ -12,11 +12,17 @@ mod ping;
 
 pub use ping::Ping;
 
+
+mod incrby;
+
+pub use incrby::Incrby;
+
+
 mod unknown;
 // mod mset;
 
 pub use unknown::Unknown;
-use crate::entity::{Frame,Parse,Db};
+use crate::entity::{Frame, Parse, Db};
 use crate::connect::{Connection};
 
 //共能接受 7 种命令，（最后一种为错误）
@@ -25,6 +31,7 @@ pub enum Command {
     Get(Get),
     Set(Set),
     Ping(Ping),
+    Incrby(Incrby),
     Unknown(Unknown),
 }
 
@@ -42,6 +49,7 @@ impl Command {
             "get" => Command::Get(Get::parse_frames(&mut parse)?),
             "set" => Command::Set(Set::parse_frames(&mut parse)?),
             "ping" => Command::Ping(Ping::parse_frames(&mut parse)?),
+            "incrby" => Command::Incrby(Incrby::parse_frames(&mut parse)?),
             _ => {
                 // 匹配到未知命令
                 return Ok(Command::Unknown(Unknown::new(command_name)));
@@ -60,6 +68,7 @@ impl Command {
             Command::Get(cmd) => cmd.apply(db, dst).await,
             Command::Set(cmd) => cmd.apply(db, dst).await,
             Command::Ping(cmd) => cmd.apply(dst).await,
+            Command::Incrby(cmd) => cmd.apply(db, dst).await,
             Command::Unknown(cmd) => cmd.apply(dst).await,
         }
     }

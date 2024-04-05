@@ -47,12 +47,12 @@ impl Set {
         match parse.next_string() {
             Ok(s) if s.to_uppercase() == "EX" => {
                 // 过期时间为秒
-                let secs = parse.next_int()?;
+                let secs = parse.next_u64()?;
                 expire = Some(Duration::from_secs(secs));
             }
             Ok(s) if s.to_uppercase() == "PX" => {
                 // 过期时间为毫秒
-                let ms = parse.next_int()?;
+                let ms: u64 = parse.next_u64()?;
                 expire = Some(Duration::from_millis(ms));
             }
             Ok(_) => return Err("currently `SET` only supports the expiration option".into()),
@@ -82,7 +82,7 @@ impl Set {
         frame.push_bulk(self.value);
         if let Some(ms) = self.expire {
             frame.push_bulk(Bytes::from("px".as_bytes()));
-            frame.push_int(ms.as_millis() as u64);
+            frame.push_u64(ms.as_millis() as u64);
         }
         frame
     }
