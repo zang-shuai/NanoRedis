@@ -69,7 +69,7 @@ impl Frame {
     pub fn check(src: &mut Cursor<&[u8]>) -> Result<(), Error> {
         match get_u8(src)? {
             // + 获取下一行
-            // - 获取下一行
+            // = 获取下一行
             // : 获取下一行（数字）
             // $ 如果下一个是 - 跳过 4 字节
             // $ 否则获取下一行（数字），然后跳过长度为：数字+2
@@ -115,7 +115,7 @@ impl Frame {
         }
     }
 
-    // 消息通过检查
+    // 将 stream 流转为帧
     pub fn parse(src: &mut Cursor<&[u8]>) -> Result<Frame, Error> {
         match get_u8(src)? {
             b'+' => {

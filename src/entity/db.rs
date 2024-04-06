@@ -2,8 +2,9 @@ use tokio::sync::{Notify};
 use tokio::time::{self, Duration, Instant};
 
 use bytes::Bytes;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, LinkedList};
 use std::io::Read;
+// use std::str::Bytes;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
 use crate::utils::serialization::{bytes_to_i64, i64_to_bytes};
@@ -51,10 +52,18 @@ struct State {
 #[derive(Debug)]
 struct Entry {
     // byte 数据
-    data: Bytes,
+    data: DbData,
 
     // 条目过期时，应该从数据库中删除。
     expires_at: Option<Instant>,
+}
+
+#[derive(Debug, Clone)]
+enum DbData {
+    String(Bytes),
+    List(LinkedList<Bytes>),
+    Set(BTreeSet<Bytes>),
+    Hash(HashMap<Bytes, Bytes>),
 }
 
 // 新建和获取数据库指针
@@ -100,7 +109,15 @@ impl Db {
     pub(crate) fn get(&self, key: &str) -> Option<Bytes> {
         // 数据浅拷贝出去
         let state = self.shared.state.lock().unwrap();
-        state.entries.get(key).map(|entry| entry.data.clone())
+        let option = state.entries.get(key).map(|entry| entry.data.clone()).unwrap();
+        match option {
+            DbData::String(v) => {
+                Some(v)
+            }
+            DbData::List(_) => { None }
+            DbData::Set(_) => { None }
+            DbData::Hash(_) => { None }
+        }
     }
 
     // 设置键值，以及可选的过期持续时间。如果存在该键，则会先删除在插入。
@@ -126,7 +143,7 @@ impl Db {
         let prev = state.entries.insert(
             key.clone(),
             Entry {
-                data: value,
+                data: DbData::String(value),
                 expires_at,
             },
         );
@@ -153,22 +170,123 @@ impl Db {
 
     pub(crate) fn incrby(&self, key: String, value: i64) -> Option<Bytes> {
         let mut state = self.shared.state.lock().unwrap();
-        let option = match state.entries.get_mut(&key) {
+        match state.entries.get_mut(&key) {
+            None => {}
+            Some(v) => {
+                match &mut v.data {
+                    DbData::String(serde_derive) => {
+                        let int = bytes_to_i64(serde_derive.clone()).unwrap();
+
+                        *serde_derive = Bytes::from((int + value).to_string());
+                    }
+                    DbData::List(_) => {}
+                    DbData::Set(_) => {}
+                    DbData::Hash(_) => {}
+                }
+            }
+        }
+        let option = match state.entries.get_mut(&key).map(|entry| entry.data.clone()) {
             None => {
                 Some(Bytes::from("error"))
             }
-            Some(data) => {
-                let bytes1 = data.data.clone();
-                let int = bytes_to_i64(bytes1.clone()).unwrap();
-                let bytes = Bytes::from((int + value).to_string()).clone();
-                data.data = bytes.clone();
-                Some(bytes.clone())
+            Some(ref mut data) => {
+                *data = match data {
+                    DbData::String(serde_derive) => {
+                        let int = bytes_to_i64(serde_derive.clone()).unwrap();
+                        // *serde_derive = bytes.clone();
+                        // data.data = DbData::String(bytes.clone());
+                        println!("{}", int + value);
+                        println!("{:?}", DbData::String(Bytes::from((int + value).to_string())));
+                        DbData::String(Bytes::from((int + value).to_string()))
+                        // Some(bytes.clone())
+                    }
+                    _ => {
+                        DbData::String(Bytes::from("error".to_string()))
+                    }
+                };
+                println!("{:?}", *data);
+                Some(Bytes::from("OK"))
             }
         };
         drop(state);
         return option;
     }
+    pub(crate) fn push(&self, key: String, value: Vec<String>, right: bool) {
+        let mut state = self.shared.state.lock().unwrap();
 
+        let option = match state.entries.get_mut(&key) {
+            None => {
+                // 将值插入哈希表中
+                let expire = None;
+                // 如果这个`set`成为下一个过期的密钥**，则需要通知后台任务，以便它可以更新其状态。是否需要通知任务是在"set"例程期间计算的。
+                let mut notify = false;
+                // 获取到期时间
+                let expires_at = expire.map(|duration| {
+                    // 设置到期时间
+                    let when = Instant::now() + duration;
+                    // 只有当新插入的expiration是下一个要删除的键时，才通知辅助任务。在这种情况下，需要唤醒worker以更新其状态。
+                    // 查看树中的第一个结点（最小结点），是否大于当前节点的存在时间
+                    notify = state
+                        .next_expiration()
+                        .map(|expiration| expiration > when)
+                        .unwrap_or(true);
+
+                    when
+                });
+                let linked_list: LinkedList<Bytes> = if right {
+                    value.into_iter().map(|str| Bytes::from(str)).collect()
+                } else {
+                    value.into_iter().map(|str| Bytes::from(str)).rev().collect()
+                };
+
+                let prev = state.entries.insert(
+                    key.clone(),
+                    Entry {
+                        data: DbData::List(linked_list),
+                        expires_at,
+                    },
+                );
+                // // 如果键已经存在。则删除
+                if let Some(prev) = prev {
+                    if let Some(when) = prev.expires_at {
+                        // 删除 expiration
+                        state.expirations.remove(&(when, key.clone()));
+                    }
+                }
+                // 插入键值对到树中
+                if let Some(when) = expires_at {
+                    state.expirations.insert((when, key));
+                }
+                // 释放互斥锁
+                if notify {
+                    // 激活 notified(需要删除节点)
+                    self.shared.background_task.notify_one();
+                }
+                Some(Bytes::from("error"));
+            }
+            Some(data) => {
+                let dbdata = &mut data.data;
+                if right {
+                    if let DbData::List(ref mut l) = dbdata {
+                        for v in value {
+                            l.push_back(Bytes::from(v));
+                        }
+                    }
+                } else {
+                    if let DbData::List(ref mut l) = dbdata {
+                        for v in value {
+                            l.push_front(Bytes::from(v));
+                        }
+                    }
+                }
+                // let int = bytes_to_i64(bytes1.clone()).unwrap();
+                // let bytes = Bytes::from((int + value).to_string()).clone();
+                // data.data = DbData::String(bytes.clone());
+                // Some(bytes.clone())
+            }
+        };
+        drop(state);
+    }
 
     // 关闭信号
     fn shutdown_purge_task(&self) {

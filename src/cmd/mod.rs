@@ -20,6 +20,8 @@ pub use incrby::Incrby;
 
 mod unknown;
 // mod mset;
+pub mod push;
+pub use push::Push;
 
 pub use unknown::Unknown;
 use crate::entity::{Frame, Parse, Db};
@@ -32,6 +34,7 @@ pub enum Command {
     Set(Set),
     Ping(Ping),
     Incrby(Incrby),
+    Push(Push),
     Unknown(Unknown),
 }
 
@@ -50,6 +53,7 @@ impl Command {
             "set" => Command::Set(Set::parse_frames(&mut parse)?),
             "ping" => Command::Ping(Ping::parse_frames(&mut parse)?),
             "incrby" => Command::Incrby(Incrby::parse_frames(&mut parse)?),
+            "push" => Command::Push(Push::parse_frames(&mut parse)?),
             _ => {
                 // 匹配到未知命令
                 return Ok(Command::Unknown(Unknown::new(command_name)));
@@ -67,6 +71,7 @@ impl Command {
         match self {
             Command::Get(cmd) => cmd.apply(db, dst).await,
             Command::Set(cmd) => cmd.apply(db, dst).await,
+            Command::Push(cmd) => cmd.apply(db, dst).await,
             Command::Ping(cmd) => cmd.apply(dst).await,
             Command::Incrby(cmd) => cmd.apply(db, dst).await,
             Command::Unknown(cmd) => cmd.apply(dst).await,

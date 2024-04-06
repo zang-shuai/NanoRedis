@@ -10,8 +10,8 @@ pub fn string_to_bytes(s: &str) -> Bytes {
     Bytes::from(bincode::serialize(s).unwrap())
 }
 
-pub fn linked_list_to_bytes<T: Serialize>(list: &LinkedList<T>) -> Bytes {
-    Bytes::from(bincode::serialize(list).unwrap())
+pub fn linked_list_to_bytes(list: LinkedList<String>) -> Bytes {
+    Bytes::from(bincode::serialize(&list).unwrap())
 }
 
 pub fn hash_set_to_bytes<T: Serialize>(set: &HashSet<T>) -> Bytes {

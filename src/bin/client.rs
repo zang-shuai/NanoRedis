@@ -53,6 +53,20 @@ enum CommandParser {
         #[clap(default_value_t = 1, value_parser = i64_from_str)]
         value: i64,
     },
+    Lpush {
+        key: String,
+        datas: Vec<String>,
+    },
+    Rpush {
+        key: String,
+        datas: Vec<String>,
+    },
+    // Lpop {
+    //     key: String,
+    // },
+    // Rpop {
+    //     key: String,
+    // },
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -112,6 +126,14 @@ async fn main() -> nano_redis::Result<()> {
         }
         CommandParser::Incr { key } => {
             client.incrby(&key, 1).await?;
+            println!("OK");
+        }
+        CommandParser::Lpush { key,datas } => {
+            client.push(&key, datas,false).await?;
+            println!("OK");
+        }
+        CommandParser::Rpush { key,datas } => {
+            client.push(&key, datas,true).await?;
             println!("OK");
         }
     }
