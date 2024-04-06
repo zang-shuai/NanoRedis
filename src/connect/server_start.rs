@@ -168,9 +168,11 @@ impl Handler {
                 Some(frame) => frame,
                 None => return Ok(()),
             };
+            println!("11111111111");
 
             // 将帧封装成命令
             let cmd = Command::from_frame(frame)?;
+            println!("xxxxxxxxxx");
             // ```
             // debug!(cmd = format!("{:?}", cmd));
             // ```记录日志

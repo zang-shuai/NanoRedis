@@ -31,6 +31,43 @@ pub use push::Push;
 pub mod pop;
 
 pub use pop::Pop;
+
+pub mod sadd;
+
+pub use sadd::Sadd;
+
+pub mod srem;
+
+pub use srem::Srem;
+
+pub mod scard;
+
+pub use scard::Scard;
+
+pub mod sismember;
+
+pub use sismember::Sismember;
+
+
+pub mod sismembers;
+
+pub use sismembers::Sismembers;
+
+
+pub mod sinter;
+
+pub use sinter::Sinter;
+
+
+pub mod sdiff;
+
+pub use sdiff::Sdiff;
+
+pub mod sunion;
+
+pub use sunion::Sunion;
+
+
 pub use unknown::Unknown;
 use crate::entity::{Frame, Parse, Db};
 use crate::connect::{Connection};
@@ -46,6 +83,14 @@ pub enum Command {
     Lrange(Lrange),
     Pop(Pop),
     Unknown(Unknown),
+    Sadd(Sadd),
+    Srem(Srem),
+    Scard(Scard),
+    Sismember(Sismember),
+    Sismembers(Sismembers),
+    Sinter(Sinter),
+    Sdiff(Sdiff),
+    Sunion(Sunion),
 }
 
 impl Command {
@@ -56,6 +101,7 @@ impl Command {
 
         // 命令转小写
         let command_name = parse.next_string()?.to_lowercase();
+        println!("---------------{:?}",command_name);
 
         // 匹配命令
         let command = match &command_name[..] {
@@ -66,6 +112,14 @@ impl Command {
             "incrby" => Command::Incrby(Incrby::parse_frames(&mut parse)?),
             "lrange" => Command::Lrange(Lrange::parse_frames(&mut parse)?),
             "push" => Command::Push(Push::parse_frames(&mut parse)?),
+            "sadd" => Command::Sadd(Sadd::parse_frames(&mut parse)?),
+            "srem" => Command::Srem(Srem::parse_frames(&mut parse)?),
+            "scard" => Command::Scard(Scard::parse_frames(&mut parse)?),
+            "sismember" =>  Command::Sismember(Sismember::parse_frames(&mut parse)?) ,
+            "sismembers" => Command::Sismembers(Sismembers::parse_frames(&mut parse)?),
+            "sinter" => Command::Sinter(Sinter::parse_frames(&mut parse)?),
+            "sdiff" => Command::Sdiff(Sdiff::parse_frames(&mut parse)?),
+            "sunion" => Command::Sunion(Sunion::parse_frames(&mut parse)?),
             _ => {
                 // 匹配到未知命令
                 return Ok(Command::Unknown(Unknown::new(command_name)));
@@ -87,8 +141,16 @@ impl Command {
             Command::Set(cmd) => cmd.apply(db, dst).await,
             Command::Push(cmd) => cmd.apply(db, dst).await,
             Command::Ping(cmd) => cmd.apply(dst).await,
-            Command::Incrby(cmd) => cmd.apply(db, dst).await,
             Command::Unknown(cmd) => cmd.apply(dst).await,
+            Command::Incrby(cmd) => cmd.apply(db, dst).await,
+            Command::Sadd(cmd) => cmd.apply(db, dst).await,
+            Command::Srem(cmd) => cmd.apply(db, dst).await,
+            Command::Scard(cmd) => cmd.apply(db, dst).await,
+            Command::Sismember(cmd) => {println!("xxx"); cmd.apply(db, dst).await },
+            Command::Sismembers(cmd) => cmd.apply(db, dst).await,
+            Command::Sinter(cmd) => cmd.apply(db, dst).await,
+            Command::Sdiff(cmd) => cmd.apply(db, dst).await,
+            Command::Sunion(cmd) => cmd.apply(db, dst).await,
         }
     }
 }

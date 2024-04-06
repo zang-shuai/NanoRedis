@@ -4,10 +4,9 @@ use crate::cmd::{*};
 use bytes::{Bytes, BytesMut};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
+use clap::value_parser;
 use tokio::net::{TcpStream, ToSocketAddrs};
-// use tokio::time::error::Error;
 use tracing::{debug, instrument};
-// use crate::Command::Lrange;
 use crate::connect::{Connection};
 use crate::entity::Frame;
 use crate::entity::Frame::Error as FrameError;
@@ -177,6 +176,114 @@ impl Client {
             frame => Err(frame.to_error()),
         }
     }
+
+
+    #[instrument(skip(self))]
+    pub async fn sadd(&mut self, key: &str, datas: Vec<String>) -> crate::Result<()> {
+        let cmd = Sadd::new(key, datas);
+        let frame = cmd.into_frame();
+        debug!(request = ?frame);
+        self.connection.write_frame(&frame).await?;
+        match self.read_response().await? {
+            Frame::Simple(response) if response == "OK" => Ok(()),
+            frame => Err(frame.to_error()),
+        }
+    }
+    #[instrument(skip(self))]
+    pub async fn scard(&mut self, key: String) -> crate::Result<Option<Bytes>> {
+        let cmd = Scard::new(key.to_string());
+        let frame = cmd.into_frame();
+        debug!(request = ?frame);
+        self.connection.write_frame(&frame).await?;
+        match self.read_response().await? {
+            Frame::Simple(value) => Ok(Some(value.into())),
+            Frame::Bulk(value) => Ok(Some(value)),
+            Frame::Null => Ok(None),
+            frame => Err(frame.to_error()),
+        }
+    }
+    #[instrument(skip(self))]
+    pub async fn sdiff(&mut self, keys: Vec<String>) -> crate::Result<Option<Bytes>> {
+        let cmd = Sdiff::new(keys.clone());
+        let frame = cmd.into_frame();
+        debug!(request = ?frame);
+        self.connection.write_frame(&frame).await?;
+        match self.read_response().await? {
+            Frame::Simple(value) => Ok(Some(value.into())),
+            Frame::Bulk(value) => Ok(Some(value)),
+            Frame::Null => Ok(None),
+            frame => Err(frame.to_error()),
+        }
+    }
+    #[instrument(skip(self))]
+    pub async fn sinter(&mut self, keys: Vec<String>) -> crate::Result<Option<Bytes>> {
+        let cmd = Sinter::new(keys.clone());
+        let frame = cmd.into_frame();
+        debug!(request = ?frame);
+        self.connection.write_frame(&frame).await?;
+        match self.read_response().await? {
+            Frame::Simple(value) => Ok(Some(value.into())),
+            Frame::Bulk(value) => Ok(Some(value)),
+            Frame::Null => Ok(None),
+            frame => Err(frame.to_error()),
+        }
+    }
+    #[instrument(skip(self))]
+    pub async fn sunion(&mut self, keys: Vec<String>) -> crate::Result<Option<Bytes>> {
+        let cmd = Sunion::new(keys.clone());
+        let frame = cmd.into_frame();
+        debug!(request = ?frame);
+        self.connection.write_frame(&frame).await?;
+        match self.read_response().await? {
+            Frame::Simple(value) => Ok(Some(value.into())),
+            Frame::Bulk(value) => Ok(Some(value)),
+            Frame::Null => Ok(None),
+            frame => Err(frame.to_error()),
+        }
+    }
+    #[instrument(skip(self))]
+    pub async fn srem(&mut self, keys: String, datas: Vec<String>) -> crate::Result<Option<Bytes>> {
+        let cmd = Srem::new(keys.clone(), datas.clone());
+        let frame = cmd.into_frame();
+        debug!(request = ?frame);
+        self.connection.write_frame(&frame).await?;
+        match self.read_response().await? {
+            Frame::Simple(value) => Ok(Some(value.into())),
+            Frame::Bulk(value) => Ok(Some(value)),
+            Frame::Null => Ok(None),
+            frame => Err(frame.to_error()),
+        }
+    }
+    #[instrument(skip(self))]
+    pub async fn sismember(&mut self, key: String, value: String) -> crate::Result<Option<Bytes>> {
+        let cmd = Sismember::new(key.clone(), value.clone());
+        let frame = cmd.into_frame();
+        // println!("{:?},{:?}",key.to_string(),value.clone());
+        debug!(request = ?frame);
+        self.connection.write_frame(&frame).await?;
+
+        match self.read_response().await? {
+            Frame::Simple(value) => {Ok(Some(value.into())) },
+            Frame::Bulk(value) => { Ok(Some(value)) },
+            Frame::Null => { Ok(None) },
+            frame => { Err(frame.to_error()) },
+        }
+    }
+    #[instrument(skip(self))]
+    pub async fn sismembers(&mut self, key: String) -> crate::Result<Option<Bytes>> {
+        let cmd = Sismembers::new(key.clone());
+        let frame = cmd.into_frame();
+        debug!(request = ?frame);
+        self.connection.write_frame(&frame).await?;
+        match self.read_response().await? {
+            Frame::Simple(value) => Ok(Some(value.into())),
+            Frame::Bulk(value) => Ok(Some(value)),
+            Frame::Null => Ok(None),
+            frame => Err(frame.to_error()),
+        }
+    }
+
+
     /// 读取响应帧
     async fn read_response(&mut self) -> crate::Result<Frame> {
         // 获取服务端的相应

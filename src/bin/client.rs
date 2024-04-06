@@ -74,6 +74,41 @@ enum CommandParser {
         #[clap(default_value_t = 1, value_parser = u64_from_str)]
         end: u64,
     },
+
+    Sadd {
+        key: String,
+        datas: Vec<String>,
+    },
+
+    Srem {
+        key: String,
+        datas: Vec<String>,
+    },
+
+    Scard {
+        key: String,
+    },
+
+    Sismember {
+        key: String,
+        value: String,
+    },
+
+    Sismembers {
+        key: String,
+    },
+
+    Sinter {
+        keys: Vec<String>,
+    },
+
+    Sdiff {
+        keys: Vec<String>,
+    },
+
+    Sunion {
+        keys: Vec<String>,
+    },
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -165,8 +200,90 @@ async fn main() -> nano_redis::Result<()> {
                 println!("(nil)");
             }
         }
-        CommandParser::Lrange { key,start,end } => {
-            if let Some(value) = client.lrange(&key,start,end).await? {
+        CommandParser::Lrange { key, start, end } => {
+            if let Some(value) = client.lrange(&key, start, end).await? {
+                if let Ok(string) = str::from_utf8(&value) {
+                    println!("{}", string);
+                } else {
+                    println!("{:?}", value);
+                }
+            } else {
+                println!("(nil)");
+            }
+        }
+
+        CommandParser::Sadd { key, datas } => {
+            client.sadd(&key.clone(), datas.clone()).await?;
+            println!("OK");
+        }
+        CommandParser::Srem { key, datas } => {
+            if let Some(value) = client.srem(key.clone(), datas.clone()).await? {
+                if let Ok(string) = str::from_utf8(&value) {
+                    println!("{}", string);
+                } else {
+                    println!("{:?}", value);
+                }
+            } else {
+                println!("(nil)");
+            }
+        }
+        CommandParser::Scard { key } => {
+            if let Some(value) = client.scard(key.clone()).await? {
+                if let Ok(string) = str::from_utf8(&value) {
+                    println!("{}", string);
+                } else {
+                    println!("{:?}", value);
+                }
+            } else {
+                println!("(nil)");
+            }
+        }
+        CommandParser::Sismember { key, value } => {
+            if let Some(value) = client.sismember(key.clone(), value.clone()).await? {
+                if let Ok(string) = str::from_utf8(&value) {
+                    println!("{}", string);
+                } else {
+                    println!("{:?}", value);
+                }
+            } else {
+                println!("(nil)");
+            }
+        }
+        CommandParser::Sismembers { key } => {
+            if let Some(value) = client.sismembers(key.clone()).await? {
+                if let Ok(string) = str::from_utf8(&value) {
+                    println!("{}", string);
+                } else {
+                    println!("{:?}", value);
+                }
+            } else {
+                println!("(nil)");
+            }
+        }
+        CommandParser::Sinter { keys } => {
+            if let Some(value) = client.sinter(keys.clone()).await? {
+                if let Ok(string) = str::from_utf8(&value) {
+                    println!("{}", string);
+                } else {
+                    println!("{:?}", value);
+                }
+            } else {
+                println!("(nil)");
+            }
+        }
+        CommandParser::Sdiff { keys } => {
+            if let Some(value) = client.sdiff(keys.clone()).await? {
+                if let Ok(string) = str::from_utf8(&value) {
+                    println!("{}", string);
+                } else {
+                    println!("{:?}", value);
+                }
+            } else {
+                println!("(nil)");
+            }
+        }
+        CommandParser::Sunion { keys } => {
+            if let Some(value) = client.sunion(keys.clone()).await? {
                 if let Ok(string) = str::from_utf8(&value) {
                     println!("{}", string);
                 } else {
@@ -199,6 +316,7 @@ fn i64_from_str(src: &str) -> Result<i64, ParseIntError> {
     // Ok(Bytes::from(src.to_string()));
     src.parse::<i64>()
 }
+
 fn u64_from_str(src: &str) -> Result<u64, ParseIntError> {
     // Ok(Bytes::from(src.to_string()));
     src.parse::<u64>()

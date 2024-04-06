@@ -5,6 +5,7 @@ use bytes::{Bytes, BytesMut};
 use std::collections::{BTreeSet, HashMap, LinkedList};
 use std::io::Read;
 // use std::str::Bytes;
+// use std::str::Bytes;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
 use crate::utils::serialization::{btree_to_bytes, bytes_to_i64, i64_to_bytes, list_to_bytes, map_to_bytes};
@@ -109,21 +110,28 @@ impl Db {
     pub(crate) fn get(&self, key: &str) -> Option<Bytes> {
         // 数据浅拷贝出去
         let state = self.shared.state.lock().unwrap();
-        let option = state.entries.get(key).map(|entry| entry.data.clone()).unwrap();
-        match option {
-            DbData::String(v) => {
-                Some(v)
-            }
-            DbData::List(v) => {
-                Some(list_to_bytes(&v))
-            }
-            DbData::Set(v) => {
-                Some(btree_to_bytes(&v))
-            }
-            DbData::Hash(v) => {
-                Some(map_to_bytes(&v))
-            }
-        }
+        // let option = state.entries.get(key).map(|entry| entry.data.clone());
+        if let Some(option) = state.entries.get(key).map(|entry| entry.data.clone()) {
+            return match option {
+                DbData::String(v) => {
+                    drop(state);
+                    Some(v)
+                }
+                DbData::List(v) => {
+                    drop(state);
+                    Some(list_to_bytes(&v))
+                }
+                DbData::Set(v) => {
+                    drop(state);
+                    Some(btree_to_bytes(&v))
+                }
+                DbData::Hash(v) => {
+                    drop(state);
+                    Some(map_to_bytes(&v))
+                }
+            };
+        };
+        None
     }
 
     pub(crate) fn pop(&self, key: &String, right: bool) -> Option<Bytes> {
@@ -228,7 +236,6 @@ impl Db {
             self.shared.background_task.notify_one();
         }
     }
-
 
     pub(crate) fn incrby(&self, key: String, value: i64) -> Option<Bytes> {
         let mut state = self.shared.state.lock().unwrap();
@@ -342,6 +349,222 @@ impl Db {
         };
         drop(state);
     }
+
+    // 插入数据
+    pub(crate) fn sadd(&self, key: String, datas: Vec<String>) {
+        let mut state = self.shared.state.lock().unwrap();
+
+        let option = match state.entries.get_mut(&key) {
+            None => {
+                // 将值插入哈希表中
+                let expire = None;
+                // 如果这个`set`成为下一个过期的密钥**，则需要通知后台任务，以便它可以更新其状态。是否需要通知任务是在"set"例程期间计算的。
+                let mut notify = false;
+                // 获取到期时间
+                let expires_at = expire.map(|duration| {
+                    // 设置到期时间
+                    let when = Instant::now() + duration;
+                    // 只有当新插入的expiration是下一个要删除的键时，才通知辅助任务。在这种情况下，需要唤醒worker以更新其状态。
+                    // 查看树中的第一个结点（最小结点），是否大于当前节点的存在时间
+                    notify = state
+                        .next_expiration()
+                        .map(|expiration| expiration > when)
+                        .unwrap_or(true);
+
+                    when
+                });
+                let new_set: BTreeSet<Bytes> = datas.into_iter().map(|str| Bytes::from(str)).collect();
+
+                let prev = state.entries.insert(
+                    key.clone(),
+                    Entry {
+                        data: DbData::Set(new_set),
+                        expires_at,
+                    },
+                );
+                // // 如果键已经存在。则删除
+                if let Some(prev) = prev {
+                    if let Some(when) = prev.expires_at {
+                        // 删除 expiration
+                        state.expirations.remove(&(when, key.clone()));
+                    }
+                }
+                // 插入键值对到树中
+                if let Some(when) = expires_at {
+                    state.expirations.insert((when, key));
+                }
+                // 释放互斥锁
+                if notify {
+                    // 激活 notified(需要删除节点)
+                    self.shared.background_task.notify_one();
+                }
+                Some(Bytes::from("error"));
+            }
+            Some(data) => {
+                let dbdata = &mut data.data;
+                if let DbData::Set(ref mut l) = dbdata {
+                    for v in datas {
+                        l.insert(Bytes::from(v));
+                    }
+                }
+            }
+        };
+        drop(state);
+    }
+    //  返回set中元素的个数
+    pub(crate) fn scard(&self, key: String) -> Option<Bytes> {
+        let state = self.shared.state.lock().unwrap();
+        let option = state.entries.get(&*key).map(|entry| entry.data.clone()).unwrap();
+        let option1 = match option {
+            DbData::Set(v) => {
+                Some(Bytes::from(v.len().to_string()))
+            }
+            _ => {
+                None
+            }
+        };
+        drop(state);
+        option1
+    }
+    pub(crate) fn sdiff(&self, keys: Vec<String>) -> Option<Bytes> {
+        let state = self.shared.state.lock().unwrap();
+        let mut sets: Vec<BTreeSet<Bytes>> = vec![];
+        for key in keys {
+            let optionx = state.entries.get(&*key).map(|entry| entry.data.clone());
+            if optionx.is_none() {
+                return None
+            }
+            let option = optionx.unwrap();
+            match option {
+                DbData::Set(v) => {
+                    sets.push(v.iter().cloned().collect());
+                }
+                _ => {}
+            };
+        }
+        let mut iter = sets.into_iter();
+        let first_set = iter.next().unwrap(); // 获取第一个集合作为基准集合
+
+        let set1 = iter.fold(first_set, |acc, set| {
+            acc.difference(&set).cloned().collect() // 顺序计算差集
+        });
+        drop(state);
+
+        Some(btree_to_bytes(&set1))
+    }
+    pub(crate) fn sinter(&self, keys: Vec<String>) -> Option<Bytes> {
+
+        let state = self.shared.state.lock().unwrap();
+        let mut sets: Vec<BTreeSet<Bytes>> = vec![];
+        for key in keys {
+            let optionx = state.entries.get(&*key).map(|entry| entry.data.clone());
+            if optionx.is_none() {
+                return None
+            }
+            let option = optionx.unwrap();
+            match option {
+                DbData::Set(v) => {
+                    sets.push(v.iter().cloned().collect());
+                }
+                _ => {}
+            };
+        }
+        let mut iter = sets.into_iter();
+        let first_set = iter.next().unwrap(); // 获取第一个集合作为基准集合
+
+        let set1 = iter.fold(first_set, |acc, set| {
+            acc.intersection(&set).cloned().collect() // 顺序计算差集
+        });
+        drop(state);
+
+        Some(btree_to_bytes(&set1))
+    }
+    pub(crate) fn sunion(&self, keys: Vec<String>) -> Option<Bytes> {
+        let state = self.shared.state.lock().unwrap();
+        let mut sets: Vec<BTreeSet<Bytes>> = vec![];
+        for key in keys {
+            let optionx = state.entries.get(&*key).map(|entry| entry.data.clone());
+            if optionx.is_none() {
+                return None
+            }
+            let option = optionx.unwrap();
+            match option {
+                DbData::Set(v) => {
+                    sets.push(v.iter().cloned().collect());
+                }
+                _ => {}
+            };
+        }
+        let mut iter = sets.into_iter();
+        let first_set = iter.next().unwrap(); // 获取第一个集合作为基准集合
+
+        let set1 = iter.fold(first_set, |acc, set| {
+            acc.union(&set).cloned().collect() // 顺序计算差集
+        });
+        drop(state);
+
+        Some(btree_to_bytes(&set1))
+    }
+    pub(crate) fn srem(&self, key: &String, datas: Vec<String>) -> Option<Bytes> {
+        let mut state = self.shared.state.lock().unwrap();
+        let x = match state.entries.get_mut(key) {
+            None => { None }
+            Some(v) => {
+                match &mut v.data {
+                    DbData::Set(v) => {
+                        for data in datas {
+                            v.remove(&*Bytes::from(data));
+                        }
+                        Some(Bytes::from("remove success"))
+                    }
+                    _ => { None }
+                }
+            }
+        };
+        drop(state);
+        println!("{:?}", self.get(key));
+        x
+    }
+    pub(crate) fn sismember(&self, key: String, value: String) -> Option<Bytes> {
+        // 数据浅拷贝出去
+        let state = self.shared.state.lock().unwrap();
+        let optionx = state.entries.get(&*key).map(|entry| entry.data.clone());
+        let x = match optionx {
+            None => {Some(Bytes::from("There is no such key.".to_string()))}
+            Some(option) => {
+                match option {
+                    DbData::Set(v) => {
+                        if v.contains(&Bytes::from(value)) {
+                            Some(Bytes::from("true".to_string()))
+                        } else {
+                            Some(Bytes::from("false".to_string()))
+                        }
+                    }
+                    _ => {
+                        Some(Bytes::from("false".to_string()))
+                    }
+                }
+            }
+        };
+        drop(state);
+        x
+    }
+    pub(crate) fn sismembers(&self, key: String) -> Option<Bytes> {
+        // 数据浅拷贝出去
+        let state = self.shared.state.lock().unwrap();
+        let option = state.entries.get(&*key).map(|entry| entry.data.clone()).unwrap();
+        let option1 = match option {
+            DbData::Set(v) => {
+                Some(btree_to_bytes(&v))
+            }
+            _ => {
+                None
+            }
+        };
+        drop(state);
+        option1
+    }
+
 
     // 关闭信号
     fn shutdown_purge_task(&self) {
