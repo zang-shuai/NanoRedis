@@ -13,6 +13,10 @@ mod ping;
 pub use ping::Ping;
 
 
+mod lrange;
+
+pub use lrange::Lrange;
+
 mod incrby;
 
 pub use incrby::Incrby;
@@ -21,9 +25,11 @@ pub use incrby::Incrby;
 mod unknown;
 // mod mset;
 pub mod push;
+
 pub use push::Push;
 
 pub mod pop;
+
 pub use pop::Pop;
 pub use unknown::Unknown;
 use crate::entity::{Frame, Parse, Db};
@@ -37,6 +43,7 @@ pub enum Command {
     Ping(Ping),
     Incrby(Incrby),
     Push(Push),
+    Lrange(Lrange),
     Pop(Pop),
     Unknown(Unknown),
 }
@@ -57,6 +64,7 @@ impl Command {
             "set" => Command::Set(Set::parse_frames(&mut parse)?),
             "ping" => Command::Ping(Ping::parse_frames(&mut parse)?),
             "incrby" => Command::Incrby(Incrby::parse_frames(&mut parse)?),
+            "lrange" => Command::Lrange(Lrange::parse_frames(&mut parse)?),
             "push" => Command::Push(Push::parse_frames(&mut parse)?),
             _ => {
                 // 匹配到未知命令
@@ -74,6 +82,7 @@ impl Command {
     pub(crate) async fn apply(self, db: &Db, dst: &mut Connection) -> crate::Result<()> {
         match self {
             Command::Get(cmd) => cmd.apply(db, dst).await,
+            Command::Lrange(cmd) => cmd.apply(db, dst).await,
             Command::Pop(cmd) => cmd.apply(db, dst).await,
             Command::Set(cmd) => cmd.apply(db, dst).await,
             Command::Push(cmd) => cmd.apply(db, dst).await,

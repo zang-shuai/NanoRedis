@@ -67,6 +67,13 @@ enum CommandParser {
     Rpop {
         key: String,
     },
+    Lrange {
+        key: String,
+        #[clap(default_value_t = 1, value_parser = u64_from_str)]
+        start: u64,
+        #[clap(default_value_t = 1, value_parser = u64_from_str)]
+        end: u64,
+    },
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -158,6 +165,17 @@ async fn main() -> nano_redis::Result<()> {
                 println!("(nil)");
             }
         }
+        CommandParser::Lrange { key,start,end } => {
+            if let Some(value) = client.lrange(&key,start,end).await? {
+                if let Ok(string) = str::from_utf8(&value) {
+                    println!("{}", string);
+                } else {
+                    println!("{:?}", value);
+                }
+            } else {
+                println!("(nil)");
+            }
+        }
     }
 
     Ok(())
@@ -180,4 +198,8 @@ fn i32_from_str(src: &str) -> Result<i32, ParseIntError> {
 fn i64_from_str(src: &str) -> Result<i64, ParseIntError> {
     // Ok(Bytes::from(src.to_string()));
     src.parse::<i64>()
+}
+fn u64_from_str(src: &str) -> Result<u64, ParseIntError> {
+    // Ok(Bytes::from(src.to_string()));
+    src.parse::<u64>()
 }

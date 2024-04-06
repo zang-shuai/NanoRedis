@@ -1,12 +1,13 @@
 //! mini 客户端
 
-use crate::cmd::{Get, Incrby, Ping, Pop, Push, Set};
+use crate::cmd::{*};
 use bytes::{Bytes, BytesMut};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
 use tokio::net::{TcpStream, ToSocketAddrs};
 // use tokio::time::error::Error;
 use tracing::{debug, instrument};
+// use crate::Command::Lrange;
 use crate::connect::{Connection};
 use crate::entity::Frame;
 use crate::entity::Frame::Error as FrameError;
@@ -71,6 +72,27 @@ impl Client {
             frame => Err(frame.to_error()),
         }
     }
+
+    #[instrument(skip(self))]
+    pub async fn lrange(&mut self, key: &str, start: u64, end: u64) -> crate::Result<Option<Bytes>> {
+        // 将 key 封装成对象，再封装成帧
+        let frame = Lrange::new(key, start, end).into_frame();
+
+        debug!(request = ?frame);
+
+        // 将帧写入 tcpstream
+        self.connection.write_frame(&frame).await?;
+
+        // 等待响应，将响应帧解开返回
+        match self.read_response().await? {
+            Frame::Simple(value) => Ok(Some(value.into())),
+            Frame::Bulk(value) => Ok(Some(value)),
+            Frame::Null => Ok(None),
+            frame => Err(frame.to_error()),
+        }
+    }
+
+
     #[instrument(skip(self))]
     pub async fn mget(&mut self, keys: &Vec<String>) -> crate::Result<Option<Bytes>> {
         let mut res = BytesMut::new();
@@ -132,8 +154,8 @@ impl Client {
         }
     }
     #[instrument(skip(self))]
-    pub async fn push(&mut self, key: &str, value: Vec<String>,right:bool) -> crate::Result<()> {
-        let cmd = Push::new(key, value,right);
+    pub async fn push(&mut self, key: &str, value: Vec<String>, right: bool) -> crate::Result<()> {
+        let cmd = Push::new(key, value, right);
         let frame = cmd.into_frame();
         debug!(request = ?frame);
         self.connection.write_frame(&frame).await?;
@@ -143,7 +165,7 @@ impl Client {
         }
     }
     #[instrument(skip(self))]
-    pub async fn pop(&mut self, key: &str, right:bool) -> crate::Result<Option<Bytes>> {
+    pub async fn pop(&mut self, key: &str, right: bool) -> crate::Result<Option<Bytes>> {
         let cmd = Pop::new(key, right);
         let frame = cmd.into_frame();
         debug!(request = ?frame);

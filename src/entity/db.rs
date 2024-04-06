@@ -1,7 +1,7 @@
 use tokio::sync::{Notify};
 use tokio::time::{self, Duration, Instant};
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use std::collections::{BTreeSet, HashMap, LinkedList};
 use std::io::Read;
 // use std::str::Bytes;
@@ -130,7 +130,7 @@ impl Db {
         // 数据浅拷贝出去
         let mut state = self.shared.state.lock().unwrap();
         let x = match state.entries.get_mut(key) {
-            None => {None}
+            None => { None }
             Some(v) => {
                 match &mut v.data {
                     DbData::List(v) => {
@@ -147,6 +147,39 @@ impl Db {
         drop(state);
         println!("{:?}", self.get(key));
         x
+    }
+
+    pub(crate) fn lrange(&self, key: &String, start: u64, end: u64) -> Option<Bytes> {
+        // 数据浅拷贝出去
+        let state = self.shared.state.lock().unwrap();
+        let option = state.entries.get(key).map(|entry| entry.data.clone()).unwrap();
+        match option {
+            DbData::List(list) => {
+                let mut bytes_mut = BytesMut::new();
+                bytes_mut.extend_from_slice(b"[");
+
+                let mut first = true;
+                // 遍历链表的索引和元素
+                for (index, value) in list.iter().enumerate() {
+                    if index >= start as usize && index <= end as usize {
+                        if !first {
+                            bytes_mut.extend_from_slice(b","); // 在元素之间添加逗号分隔符
+                        }
+                        bytes_mut.extend_from_slice(value); // 追加当前元素到 BytesMut 中
+                        first = false;
+                    }
+                    if index > end as usize {
+                        break; // 一旦达到 end 索引，提前退出循环
+                    }
+                }
+                bytes_mut.extend_from_slice(b"]");
+                // 将 BytesMut 转换为 Bytes
+                Some(bytes_mut.freeze())
+            }
+            _ => {
+                None
+            }
+        }
     }
 
     // 设置键值，以及可选的过期持续时间。如果存在该键，则会先删除在插入。
