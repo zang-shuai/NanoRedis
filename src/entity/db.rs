@@ -7,7 +7,7 @@ use std::io::Read;
 // use std::str::Bytes;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
-use crate::utils::serialization::{bytes_to_i64, i64_to_bytes};
+use crate::utils::serialization::{btree_to_bytes, bytes_to_i64, i64_to_bytes, list_to_bytes, map_to_bytes};
 
 // `Db`的包装类。为了允许有序地清理"Db"，当这个结构被丢弃时，通过信号通知后台清除任务关闭系统
 #[derive(Debug)]
@@ -114,9 +114,15 @@ impl Db {
             DbData::String(v) => {
                 Some(v)
             }
-            DbData::List(_) => { None }
-            DbData::Set(_) => { None }
-            DbData::Hash(_) => { None }
+            DbData::List(v) => {
+                Some(list_to_bytes(&v))
+            }
+            DbData::Set(v) => {
+                Some(btree_to_bytes(&v))
+            }
+            DbData::Hash(v) => {
+                Some(map_to_bytes(&v))
+            }
         }
     }
 
@@ -176,7 +182,6 @@ impl Db {
                 match &mut v.data {
                     DbData::String(serde_derive) => {
                         let int = bytes_to_i64(serde_derive.clone()).unwrap();
-
                         *serde_derive = Bytes::from((int + value).to_string());
                     }
                     DbData::List(_) => {}
