@@ -126,6 +126,29 @@ impl Db {
         }
     }
 
+    pub(crate) fn pop(&self, key: &String, right: bool) -> Option<Bytes> {
+        // 数据浅拷贝出去
+        let mut state = self.shared.state.lock().unwrap();
+        let x = match state.entries.get_mut(key) {
+            None => {None}
+            Some(v) => {
+                match &mut v.data {
+                    DbData::List(v) => {
+                        if right {
+                            v.pop_back()
+                        } else {
+                            v.pop_front()
+                        }
+                    }
+                    _ => { None }
+                }
+            }
+        };
+        drop(state);
+        println!("{:?}", self.get(key));
+        x
+    }
+
     // 设置键值，以及可选的过期持续时间。如果存在该键，则会先删除在插入。
     pub(crate) fn set(&self, key: String, value: Bytes, expire: Option<Duration>) {
         let mut state = self.shared.state.lock().unwrap();
@@ -198,18 +221,12 @@ impl Db {
                 *data = match data {
                     DbData::String(serde_derive) => {
                         let int = bytes_to_i64(serde_derive.clone()).unwrap();
-                        // *serde_derive = bytes.clone();
-                        // data.data = DbData::String(bytes.clone());
-                        println!("{}", int + value);
-                        println!("{:?}", DbData::String(Bytes::from((int + value).to_string())));
                         DbData::String(Bytes::from((int + value).to_string()))
-                        // Some(bytes.clone())
                     }
                     _ => {
                         DbData::String(Bytes::from("error".to_string()))
                     }
                 };
-                println!("{:?}", *data);
                 Some(Bytes::from("OK"))
             }
         };

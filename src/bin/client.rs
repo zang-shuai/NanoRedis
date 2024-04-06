@@ -61,12 +61,12 @@ enum CommandParser {
         key: String,
         datas: Vec<String>,
     },
-    // Lpop {
-    //     key: String,
-    // },
-    // Rpop {
-    //     key: String,
-    // },
+    Lpop {
+        key: String,
+    },
+    Rpop {
+        key: String,
+    },
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -94,7 +94,7 @@ async fn main() -> nano_redis::Result<()> {
         CommandParser::Get { key } => {
             if let Some(value) = client.get(&key).await? {
                 if let Ok(string) = str::from_utf8(&value) {
-                    println!("\"{}\"", string);
+                    println!("{}", string);
                 } else {
                     println!("{:?}", value);
                 }
@@ -128,13 +128,35 @@ async fn main() -> nano_redis::Result<()> {
             client.incrby(&key, 1).await?;
             println!("OK");
         }
-        CommandParser::Lpush { key,datas } => {
-            client.push(&key, datas,false).await?;
+        CommandParser::Lpush { key, datas } => {
+            client.push(&key, datas, false).await?;
             println!("OK");
         }
-        CommandParser::Rpush { key,datas } => {
-            client.push(&key, datas,true).await?;
+        CommandParser::Rpush { key, datas } => {
+            client.push(&key, datas, true).await?;
             println!("OK");
+        }
+        CommandParser::Lpop { key } => {
+            if let Some(value) = client.pop(&key, false).await? {
+                if let Ok(string) = str::from_utf8(&value) {
+                    println!("\"{}\"", string);
+                } else {
+                    println!("{:?}", value);
+                }
+            } else {
+                println!("(nil)");
+            }
+        }
+        CommandParser::Rpop { key } => {
+            if let Some(value) = client.pop(&key, true).await? {
+                if let Ok(string) = str::from_utf8(&value) {
+                    println!("\"{}\"", string);
+                } else {
+                    println!("{:?}", value);
+                }
+            } else {
+                println!("(nil)");
+            }
         }
     }
 

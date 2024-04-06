@@ -1,6 +1,6 @@
 //! mini 客户端
 
-use crate::cmd::{Get, Incrby, Ping, Push, Set};
+use crate::cmd::{Get, Incrby, Ping, Pop, Push, Set};
 use bytes::{Bytes, BytesMut};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
@@ -139,6 +139,19 @@ impl Client {
         self.connection.write_frame(&frame).await?;
         match self.read_response().await? {
             Frame::Simple(response) if response == "OK" => Ok(()),
+            frame => Err(frame.to_error()),
+        }
+    }
+    #[instrument(skip(self))]
+    pub async fn pop(&mut self, key: &str, right:bool) -> crate::Result<Option<Bytes>> {
+        let cmd = Pop::new(key, right);
+        let frame = cmd.into_frame();
+        debug!(request = ?frame);
+        self.connection.write_frame(&frame).await?;
+        match self.read_response().await? {
+            Frame::Simple(value) => Ok(Some(value.into())),
+            Frame::Bulk(value) => Ok(Some(value)),
+            Frame::Null => Ok(None),
             frame => Err(frame.to_error()),
         }
     }

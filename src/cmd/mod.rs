@@ -23,6 +23,8 @@ mod unknown;
 pub mod push;
 pub use push::Push;
 
+pub mod pop;
+pub use pop::Pop;
 pub use unknown::Unknown;
 use crate::entity::{Frame, Parse, Db};
 use crate::connect::{Connection};
@@ -35,6 +37,7 @@ pub enum Command {
     Ping(Ping),
     Incrby(Incrby),
     Push(Push),
+    Pop(Pop),
     Unknown(Unknown),
 }
 
@@ -50,6 +53,7 @@ impl Command {
         // 匹配命令
         let command = match &command_name[..] {
             "get" => Command::Get(Get::parse_frames(&mut parse)?),
+            "pop" => Command::Pop(Pop::parse_frames(&mut parse)?),
             "set" => Command::Set(Set::parse_frames(&mut parse)?),
             "ping" => Command::Ping(Ping::parse_frames(&mut parse)?),
             "incrby" => Command::Incrby(Incrby::parse_frames(&mut parse)?),
@@ -70,6 +74,7 @@ impl Command {
     pub(crate) async fn apply(self, db: &Db, dst: &mut Connection) -> crate::Result<()> {
         match self {
             Command::Get(cmd) => cmd.apply(db, dst).await,
+            Command::Pop(cmd) => cmd.apply(db, dst).await,
             Command::Set(cmd) => cmd.apply(db, dst).await,
             Command::Push(cmd) => cmd.apply(db, dst).await,
             Command::Ping(cmd) => cmd.apply(dst).await,
